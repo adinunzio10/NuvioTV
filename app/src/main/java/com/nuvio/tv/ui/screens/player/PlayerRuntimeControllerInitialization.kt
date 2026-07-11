@@ -1329,7 +1329,11 @@ internal fun PlayerRuntimeController.initializePlayer(
                             }
                         }
 
-                        _uiState.update { it.copy(error = detailedError, showLoadingOverlay = false, showPauseOverlay = false) }
+                        // Surface the user-friendly, actionable message (e.g. the "Try a different
+                        // source" text for a 3003 / UnrecognizedInputFormatException, or an
+                        // HTTP-status hint) instead of the raw extractor error. The raw
+                        // detailedError is retained above for logs/diagnostics only. See ISSUES.md #1.
+                        _uiState.update { it.copy(error = error.toDisplayMessage(context), showLoadingOverlay = false, showPauseOverlay = false) }
                     }
                 })
 
