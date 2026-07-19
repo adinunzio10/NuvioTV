@@ -113,6 +113,24 @@ and does **not** change retry/reload behavior, so that recovery is either a heal
 (cause #1) or, if it was the *same* source, a transient/misdetected stream (cause #2 → the deferred
 re-probe item above). Not enough signal yet to distinguish.
 
+### Enhancement: active source-failure diagnostic probe (2026-07-11)
+
+Landed on `dev`: on a content-shaped failure (3003, and the `IO_UNSPECIFIED` parse family — so this
+also advances #4's "surface more diagnostics" goal), the app now re-fetches the stream's first bytes
+and classifies *why* it failed (error page / Cloudflare challenge / expired / removed / blocked /
+rate-limited / geo-blocked / unreachable), refining the on-screen message from the generic copy to a
+specific reason (generic fallback when inconclusive). It also logs `SOURCE_DIAG` diagnostics — a
+summary line always, plus a bounded body snippet + replayable curl for text bodies, or hex magic
+bytes for binary — so unseen error pages can grow the classifier keyword tables.
+
+Design + plan: `docs/superpowers/specs/2026-07-11-source-failure-diagnostic-probe-design.md`,
+`docs/superpowers/plans/2026-07-11-source-failure-diagnostic-probe.md`. Truncation detection for the
+varint/#4 family (a tail/Content-Length check) is deliberately out of scope and stays under #4.
+
+**Still pending: on-device confirmation.** The pure classifier/mapping are unit-tested, but the probe
+I/O and `onPlayerError` wiring have no unit coverage by design — confirm a live `SOURCE_DIAG` log line
+and an on-screen message refinement on the Shield during a real failure.
+
 ### Repro / diagnosis notes
 
 Intermittent — occurs on normal playback. To confirm the cause on a given failure, `adb logcat`
