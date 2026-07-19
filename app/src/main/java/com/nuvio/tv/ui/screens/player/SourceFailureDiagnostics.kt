@@ -139,42 +139,46 @@ private const val SOURCE_DIAG_MAX_BYTES = 4096
 
 suspend fun probeSourceFailure(url: String, headers: Map<String, String>): SourceFailureDiagnosis =
     withContext(Dispatchers.IO) {
-        val sanitized = PlayerMediaSourceFactory.sanitizeHeaders(headers)
-        val requestHeaders = sanitized.toMutableMap().apply { put("Connection", "close") }
-
-        var status: Int? = null
-        var contentType: String? = null
-        var contentLength: String? = null
-        var bytes = ByteArray(0)
-        var probeFailed = false
-        var connection: HttpURLConnection? = null
         try {
-            connection = PlayerPlaybackNetworking.openConnection(
-                url = url,
-                headers = requestHeaders,
-                method = "GET",
-                connectTimeoutMs = SOURCE_DIAG_TIMEOUT_MS,
-                readTimeoutMs = SOURCE_DIAG_TIMEOUT_MS,
-                range = "bytes=0-${SOURCE_DIAG_MAX_BYTES - 1}"
-            )
-            status = connection.responseCode
-            contentType = connection.contentType
-            contentLength = connection.getHeaderField("Content-Length")
-            val stream = if (status >= 400) connection.errorStream else connection.inputStream
-            bytes = stream?.readUpTo(SOURCE_DIAG_MAX_BYTES) ?: ByteArray(0)
-        } catch (_: Exception) {
-            probeFailed = true
-        } finally {
-            runCatching { connection?.disconnect() }
-        }
+            val sanitized = PlayerMediaSourceFactory.sanitizeHeaders(headers)
+            val requestHeaders = sanitized.toMutableMap().apply { put("Connection", "close") }
 
-        val textual = !probeFailed && looksTextual(contentType, bytes)
-        val bodyText = if (textual) String(bytes, Charsets.UTF_8) else null
-        val diagnosis = classifySourceFailure(
-            SourceProbeInput(probeFailed, status, contentType, bodyText)
-        )
-        logSourceDiag(url, sanitized, diagnosis, status, contentType, contentLength, bytes, textual, bodyText)
-        diagnosis
+            var status: Int? = null
+            var contentType: String? = null
+            var contentLength: String? = null
+            var bytes = ByteArray(0)
+            var probeFailed = false
+            var connection: HttpURLConnection? = null
+            try {
+                connection = PlayerPlaybackNetworking.openConnection(
+                    url = url,
+                    headers = requestHeaders,
+                    method = "GET",
+                    connectTimeoutMs = SOURCE_DIAG_TIMEOUT_MS,
+                    readTimeoutMs = SOURCE_DIAG_TIMEOUT_MS,
+                    range = "bytes=0-${SOURCE_DIAG_MAX_BYTES - 1}"
+                )
+                status = connection.responseCode
+                contentType = connection.contentType
+                contentLength = connection.getHeaderField("Content-Length")
+                val stream = if (status >= 400) connection.errorStream else connection.inputStream
+                bytes = stream?.readUpTo(SOURCE_DIAG_MAX_BYTES) ?: ByteArray(0)
+            } catch (_: Exception) {
+                probeFailed = true
+            } finally {
+                runCatching { connection?.disconnect() }
+            }
+
+            val textual = !probeFailed && looksTextual(contentType, bytes)
+            val bodyText = if (textual) String(bytes, Charsets.UTF_8) else null
+            val diagnosis = classifySourceFailure(
+                SourceProbeInput(probeFailed, status, contentType, bodyText)
+            )
+            logSourceDiag(url, sanitized, diagnosis, status, contentType, contentLength, bytes, textual, bodyText)
+            diagnosis
+        } catch (_: Exception) {
+            SourceFailureDiagnosis(SourceFailureReason.INCONCLUSIVE)
+        }
     }
 
 private fun InputStream.readUpTo(max: Int): ByteArray {
