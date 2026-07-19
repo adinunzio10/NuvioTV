@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.player
 
+import androidx.media3.common.PlaybackException
 import java.util.Locale
 
 enum class SourceFailureReason {
@@ -74,4 +75,24 @@ fun classifySourceFailure(input: SourceProbeInput): SourceFailureDiagnosis {
     }
 
     return SourceFailureDiagnosis(SourceFailureReason.INCONCLUSIVE, status)
+}
+
+private inline fun <reified T : Throwable> Throwable.hasCauseOfType(): Boolean {
+    var c: Throwable? = this
+    while (c != null) { if (c is T) return true; c = c.cause }
+    return false
+}
+
+fun isContentShapedFailure(error: PlaybackException): Boolean {
+    if (error.hasCauseOfType<androidx.media3.exoplayer.source.UnrecognizedInputFormatException>()) return true
+    if (error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED) {
+        val networkCause = error.hasCauseOfType<java.net.SocketException>() ||
+            error.hasCauseOfType<java.net.SocketTimeoutException>() ||
+            error.hasCauseOfType<java.net.UnknownHostException>() ||
+            error.hasCauseOfType<javax.net.ssl.SSLException>()
+        if (networkCause) return false
+        return error.hasCauseOfType<IllegalStateException>() ||
+            error.hasCauseOfType<androidx.media3.common.ParserException>()
+    }
+    return false
 }
