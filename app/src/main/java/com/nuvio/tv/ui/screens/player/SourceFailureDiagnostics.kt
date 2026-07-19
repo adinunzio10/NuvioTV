@@ -96,3 +96,35 @@ fun isContentShapedFailure(error: PlaybackException): Boolean {
     }
     return false
 }
+
+fun looksTextual(contentType: String?, bytes: ByteArray): Boolean {
+    contentType?.lowercase(Locale.US)?.let { ct ->
+        if (ct.contains("text/") || ct.contains("json") || ct.contains("xml") || ct.contains("html")) return true
+        if (ct.startsWith("video/") || ct.startsWith("audio/") || ct.contains("octet-stream")) return false
+    }
+    if (bytes.isEmpty()) return false
+    val sample = bytes.take(256)
+    val printable = sample.count {
+        val v = it.toInt() and 0xFF
+        v == 0x09 || v == 0x0A || v == 0x0D || v in 0x20..0x7E
+    }
+    return printable.toDouble() / sample.size >= 0.85
+}
+
+fun sanitizeBodySnippet(body: String, maxChars: Int = 2000): String {
+    val collapsed = body.replace(Regex("\\s+"), " ").trim()
+    return if (collapsed.length > maxChars) {
+        collapsed.take(maxChars) + "…[+${collapsed.length - maxChars} chars]"
+    } else collapsed
+}
+
+fun hexPreview(bytes: ByteArray, count: Int = 16): String =
+    bytes.take(count).joinToString(" ") { String.format(Locale.US, "%02X", it.toInt() and 0xFF) }
+
+fun buildCurlCommand(url: String, headers: Map<String, String>): String {
+    val headerArgs = headers.entries.joinToString(" ") { (k, v) ->
+        "-H '$k: ${v.replace("'", "'\\''")}'"
+    }
+    val prefix = "curl -sS -D - -r 0-4095"
+    return if (headerArgs.isBlank()) "$prefix '$url'" else "$prefix $headerArgs '$url'"
+}
