@@ -442,3 +442,24 @@ private fun PlayerRuntimeController.handleParsingErrorFallback(error: PlaybackEx
         }
     }
 }
+
+internal fun SourceFailureDiagnosis.toDisplayMessage(
+    context: android.content.Context,
+    errorCodeName: String
+): String {
+    if (reason == SourceFailureReason.INCONCLUSIVE) {
+        return context.getString(R.string.player_error_source_invalid_content, errorCodeName)
+    }
+    val line = when (reason) {
+        SourceFailureReason.EXPIRED -> context.getString(R.string.player_error_stream_expired)
+        SourceFailureReason.NOT_FOUND -> context.getString(R.string.player_error_stream_removed)
+        SourceFailureReason.BLOCKED -> context.getString(R.string.player_error_stream_blocked)
+        SourceFailureReason.RATE_LIMITED -> context.getString(R.string.player_error_stream_rate_limited)
+        SourceFailureReason.CHALLENGE -> context.getString(R.string.player_error_source_challenge)
+        SourceFailureReason.GEO_BLOCKED -> context.getString(R.string.player_error_source_geo_blocked)
+        SourceFailureReason.ERROR_PAGE -> context.getString(R.string.player_error_source_error_page, httpStatus ?: 0)
+        SourceFailureReason.UNREACHABLE -> context.getString(R.string.player_error_source_unreachable)
+        SourceFailureReason.INCONCLUSIVE -> "" // handled above
+    }.trim()
+    return "$line [$errorCodeName]"
+}

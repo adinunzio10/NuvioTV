@@ -2367,6 +2367,10 @@
     <string name="player_error_stream_rate_limited">\n\nToo many requests to the stream source. Wait a moment and try again.</string>
     <string name="player_error_stream_unavailable">\n\nThe stream server is currently unavailable. Try a different source.</string>
     <string name="player_error_source_invalid_content">Source error: The stream source returned invalid or unplayable content. The link may have expired or the server returned an error page instead of video.\n\nTry a different source. [%1$s]</string>
+    <string name="player_error_source_challenge">This source is behind a bot check (e.g. Cloudflare) and returned a challenge page instead of the video. Try a different source.</string>
+    <string name="player_error_source_geo_blocked">This source appears to be blocked in your region. Try a different source.</string>
+    <string name="player_error_source_error_page">The server returned an error page instead of the video (HTTP %1$d). Try a different source.</string>
+    <string name="player_error_source_unreachable">This source couldn\'t be reached to play or diagnose — it may be down. Try a different source.</string>
     <string name="player_error_decoder">Decoder error</string>
     <string name="player_error_unsupported_format">This stream uses a format your device may not support. Try a different source. [%1$s]</string>
     <string name="player_error_initialize_failed">Failed to initialize player</string>
