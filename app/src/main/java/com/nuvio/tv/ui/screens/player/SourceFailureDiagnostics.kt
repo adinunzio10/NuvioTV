@@ -163,8 +163,9 @@ suspend fun probeSourceFailure(url: String, headers: Map<String, String>): Sourc
                 contentLength = connection.getHeaderField("Content-Length")
                 val stream = if (status >= 400) connection.errorStream else connection.inputStream
                 bytes = stream?.readUpTo(SOURCE_DIAG_MAX_BYTES) ?: ByteArray(0)
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 probeFailed = true
+                Log.d(PlayerRuntimeController.TAG, "SOURCE_DIAG probe I/O failed", e)
             } finally {
                 runCatching { connection?.disconnect() }
             }

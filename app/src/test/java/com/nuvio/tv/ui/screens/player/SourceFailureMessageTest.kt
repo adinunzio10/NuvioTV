@@ -5,7 +5,7 @@ import com.nuvio.tv.R
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class SourceFailureMessageTest {
@@ -13,6 +13,7 @@ class SourceFailureMessageTest {
         every { c.getString(R.string.player_error_stream_expired) } returns "\n\nEXPIRED"
         every { c.getString(R.string.player_error_source_challenge) } returns "CHALLENGE"
         every { c.getString(R.string.player_error_source_error_page, any()) } returns "ERRORPAGE-503"
+        every { c.getString(R.string.player_error_source_error_page_no_code) } returns "ERRORPAGE-NOCODE"
         every { c.getString(R.string.player_error_source_invalid_content, any()) } returns "GENERIC"
     }
 
@@ -29,6 +30,17 @@ class SourceFailureMessageTest {
     @Test fun `error page maps with the http status`() {
         val msg = SourceFailureDiagnosis(SourceFailureReason.ERROR_PAGE, 503).toDisplayMessage(context(), "CODE")
         assertEquals("ERRORPAGE-503 [CODE]", msg)
+    }
+
+    @Test fun `error page with HTTP 200 omits the code and does not mention HTTP`() {
+        val msg = SourceFailureDiagnosis(SourceFailureReason.ERROR_PAGE, 200).toDisplayMessage(context(), "CODE")
+        assertEquals("ERRORPAGE-NOCODE [CODE]", msg)
+        assertFalse("expected no HTTP mention, got: $msg", msg.contains("HTTP"))
+    }
+
+    @Test fun `error page with a null http status omits the code`() {
+        val msg = SourceFailureDiagnosis(SourceFailureReason.ERROR_PAGE, null).toDisplayMessage(context(), "CODE")
+        assertEquals("ERRORPAGE-NOCODE [CODE]", msg)
     }
 
     @Test fun `inconclusive uses the generic string which already embeds the code`() {

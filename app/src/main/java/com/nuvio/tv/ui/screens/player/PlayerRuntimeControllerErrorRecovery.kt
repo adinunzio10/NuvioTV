@@ -457,7 +457,11 @@ internal fun SourceFailureDiagnosis.toDisplayMessage(
         SourceFailureReason.RATE_LIMITED -> context.getString(R.string.player_error_stream_rate_limited)
         SourceFailureReason.CHALLENGE -> context.getString(R.string.player_error_source_challenge)
         SourceFailureReason.GEO_BLOCKED -> context.getString(R.string.player_error_source_geo_blocked)
-        SourceFailureReason.ERROR_PAGE -> context.getString(R.string.player_error_source_error_page, httpStatus ?: 0)
+        SourceFailureReason.ERROR_PAGE ->
+            if (httpStatus != null && httpStatus >= 400)
+                context.getString(R.string.player_error_source_error_page, httpStatus)
+            else
+                context.getString(R.string.player_error_source_error_page_no_code)
         SourceFailureReason.UNREACHABLE -> context.getString(R.string.player_error_source_unreachable)
         SourceFailureReason.INCONCLUSIVE -> "" // handled above
     }.trim()
