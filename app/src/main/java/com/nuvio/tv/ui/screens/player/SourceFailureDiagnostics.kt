@@ -1,7 +1,12 @@
 package com.nuvio.tv.ui.screens.player
 
+import android.util.Log
 import androidx.media3.common.PlaybackException
+import java.io.InputStream
+import java.net.HttpURLConnection
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 enum class SourceFailureReason {
     UNREACHABLE, EXPIRED, NOT_FOUND, BLOCKED, RATE_LIMITED,
@@ -127,4 +132,89 @@ fun buildCurlCommand(url: String, headers: Map<String, String>): String {
     }
     val prefix = "curl -sS -D - -r 0-4095"
     return if (headerArgs.isBlank()) "$prefix '$url'" else "$prefix $headerArgs '$url'"
+}
+
+private const val SOURCE_DIAG_TIMEOUT_MS = 4000
+private const val SOURCE_DIAG_MAX_BYTES = 4096
+
+suspend fun probeSourceFailure(url: String, headers: Map<String, String>): SourceFailureDiagnosis =
+    withContext(Dispatchers.IO) {
+        val sanitized = PlayerMediaSourceFactory.sanitizeHeaders(headers)
+        val requestHeaders = sanitized.toMutableMap().apply { put("Connection", "close") }
+
+        var status: Int? = null
+        var contentType: String? = null
+        var contentLength: String? = null
+        var bytes = ByteArray(0)
+        var probeFailed = false
+        var connection: HttpURLConnection? = null
+        try {
+            connection = PlayerPlaybackNetworking.openConnection(
+                url = url,
+                headers = requestHeaders,
+                method = "GET",
+                connectTimeoutMs = SOURCE_DIAG_TIMEOUT_MS,
+                readTimeoutMs = SOURCE_DIAG_TIMEOUT_MS,
+                range = "bytes=0-${SOURCE_DIAG_MAX_BYTES - 1}"
+            )
+            status = connection.responseCode
+            contentType = connection.contentType
+            contentLength = connection.getHeaderField("Content-Length")
+            val stream = if (status >= 400) connection.errorStream else connection.inputStream
+            bytes = stream?.readUpTo(SOURCE_DIAG_MAX_BYTES) ?: ByteArray(0)
+        } catch (_: Exception) {
+            probeFailed = true
+        } finally {
+            runCatching { connection?.disconnect() }
+        }
+
+        val textual = !probeFailed && looksTextual(contentType, bytes)
+        val bodyText = if (textual) String(bytes, Charsets.UTF_8) else null
+        val diagnosis = classifySourceFailure(
+            SourceProbeInput(probeFailed, status, contentType, bodyText)
+        )
+        logSourceDiag(url, sanitized, diagnosis, status, contentType, contentLength, bytes, textual, bodyText)
+        diagnosis
+    }
+
+private fun InputStream.readUpTo(max: Int): ByteArray {
+    val buffer = ByteArray(max)
+    var total = 0
+    while (total < max) {
+        val read = read(buffer, total, max - total)
+        if (read < 0) break
+        total += read
+    }
+    return buffer.copyOf(total)
+}
+
+private fun logSourceDiag(
+    url: String,
+    headers: Map<String, String>,
+    diagnosis: SourceFailureDiagnosis,
+    status: Int?,
+    contentType: String?,
+    contentLength: String?,
+    bytes: ByteArray,
+    textual: Boolean,
+    bodyText: String?
+) {
+    val host = runCatching { java.net.URI(url).host }.getOrNull() ?: "?"
+    Log.w(
+        PlayerRuntimeController.TAG,
+        "SOURCE_DIAG reason=${diagnosis.reason} status=${status ?: "?"} " +
+            "contentType=${contentType ?: "?"} len=${contentLength ?: "?"} host=$host"
+    )
+    val statusOkOrUnknown = status == null || status < 400
+    if (!statusOkOrUnknown) return
+
+    if (textual && bodyText != null) {
+        Log.w(PlayerRuntimeController.TAG, "SOURCE_DIAG body: ${sanitizeBodySnippet(bodyText)}")
+        Log.w(PlayerRuntimeController.TAG, "SOURCE_DIAG replay: ${buildCurlCommand(url, headers)}")
+    } else if (bytes.isNotEmpty()) {
+        Log.w(
+            PlayerRuntimeController.TAG,
+            "SOURCE_DIAG binary: hex=${hexPreview(bytes)} len=${contentLength ?: bytes.size.toString()}"
+        )
+    }
 }
