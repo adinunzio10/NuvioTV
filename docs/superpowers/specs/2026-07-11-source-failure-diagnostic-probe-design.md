@@ -89,9 +89,10 @@ Keyword/marker tables are module constants.
 
 Reuses `PlayerPlaybackNetworking.openConnection(...)` (same helper the MIME probe uses) with a
 range-GET `bytes=0-4095` and the existing `PROBE_TIMEOUT_MS` (4 s). Reads the status,
-`Content-Type`, and up to ~4 KB of body → builds `SourceProbeInput` → returns
+`Content-Type`, `Content-Length`, and up to ~4 KB of body → builds `SourceProbeInput` → returns
 `classifySourceFailure(...)`. Any connection exception → `SourceProbeInput(probeFailed = true)`.
-No caching (failure diagnosis must be live). Runs on `Dispatchers.IO`.
+No caching (failure diagnosis must be live). Runs on `Dispatchers.IO`. The probe also emits the
+diagnostics log (see below) — the classifier stays pure; all I/O and logging live here.
 
 ### 3. `onPlayerError` integration — async, non-blocking
 
@@ -125,6 +126,35 @@ Try a different source. [<errorCodeName>]" to fit the existing "Playback Error" 
 | UNREACHABLE | new — "couldn't be reached to play or diagnose; it may be down." |
 | INCONCLUSIVE | improved generic copy (the already-edited `player_error_source_invalid_content`). |
 
+## Diagnostics logging
+
+The classifier's reason set will inevitably miss error pages we haven't seen. Logging is how the
+keyword/marker tables grow — especially for `INCONCLUSIVE` (unrecognized) and `ERROR_PAGE` /
+`CHALLENGE` that matched no specific keyword. Emitted by the probe layer under the existing
+`PlayerViewModel` tag with a `SOURCE_DIAG` prefix (so it lands in the same logcat capture already
+used for debugging). Always on — these dumps only fire on rare content-shaped failures, and gating
+them behind a flag would mean they're off exactly when an unseen error page appears in the wild.
+
+**Always (any diagnosis) — one greppable summary line:**
+```
+SOURCE_DIAG reason=INCONCLUSIVE status=200 contentType=text/html len=1834 host=<host>
+```
+
+**Additionally, when the response status is 2xx or unknown** (i.e. the server said "OK" but the
+body wasn't playable video — the case where keyword discovery matters; a 4xx/5xx already tells us
+the cause from its code, so it gets only the summary line):
+- **Text body** (content-type text/html/json, or bytes mostly printable): a **bounded, sanitized
+  snippet** — first ~1–2 KB, printable chars only, whitespace-collapsed, hard length cap — so new
+  keywords can be read straight from logcat.
+- **A replayable request dump** in curl form (`method`, full URL, `-H` headers) so the full body can
+  be pulled on a laptop when the snippet isn't enough.
+- **Binary body** (unrecognized non-text bytes, e.g. truncated MKV): skip the text dump; instead log
+  the **hex of the first ~16 bytes** + total length. Magic numbers identify the real container for
+  free (`1A45DFA3` = Matroska/EBML, `…ftyp` = MP4) — directly useful for the #4 varint family.
+
+The reason enum and message stay unchanged (`INCONCLUSIVE` still shows the improved generic copy);
+this is logging only.
+
 ## Testing
 
 - `SourceFailureClassifierTest` (pure JVM): table-driven (status × content-type × body) →
@@ -136,9 +166,14 @@ Try a different source. [<errorCodeName>]" to fit the existing "Playback Error" 
 ## Privacy / safety
 
 The probe re-requests the **same** stream URL with the **same** headers already in use — no new
-endpoint, no user data goes anywhere it wasn't already going. The body snippet is inspected
-locally only; logs record the **classification + status**, never the raw body or full URL
-(stream URLs can embed debrid tokens).
+endpoint, no user data goes anywhere it wasn't already going; nothing is sent to any third party.
+
+The diagnostics logging (above) intentionally writes a failed source's error-page body snippet and
+a token-bearing URL/headers to logcat. This is a deliberate tradeoff for a self-maintained fork:
+it only fires on rare content-shaped failures, and it is **consistent with what the app already
+logs today** — `Resolved stream mimeType=… for url=…` already prints the full tokenized stream URL.
+The data stays on-device (logcat), tied to the user's own debrid account. If this is ever
+distributed more widely, revisit gating the verbose snippet/curl dump behind a debug toggle.
 
 ## Files
 
