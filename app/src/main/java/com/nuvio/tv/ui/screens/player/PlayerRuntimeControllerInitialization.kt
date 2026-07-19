@@ -1334,6 +1334,26 @@ internal fun PlayerRuntimeController.initializePlayer(
                         // HTTP-status hint) instead of the raw extractor error. The raw
                         // detailedError is retained above for logs/diagnostics only. See ISSUES.md #1.
                         _uiState.update { it.copy(error = error.toDisplayMessage(context), showLoadingOverlay = false, showPauseOverlay = false) }
+
+                        // For content-shaped failures (3003 / parser IllegalState), the generic
+                        // message above is shown immediately; then actively re-probe the source to
+                        // refine it with a specific reason (error page / challenge / expired / …).
+                        // Guarded so a superseding stream/retry doesn't get clobbered. See
+                        // docs/superpowers/specs/2026-07-11-source-failure-diagnostic-probe-design.md.
+                        if (isContentShapedFailure(error)) {
+                            val probedUrl = currentStreamUrl
+                            val probedHeaders = currentHeaders
+                            val codeName = error.errorCodeName
+                            scope.launch {
+                                val diagnosis = probeSourceFailure(probedUrl, probedHeaders)
+                                if (diagnosis.reason != SourceFailureReason.INCONCLUSIVE &&
+                                    currentStreamUrl == probedUrl &&
+                                    _uiState.value.error != null
+                                ) {
+                                    _uiState.update { it.copy(error = diagnosis.toDisplayMessage(context, codeName)) }
+                                }
+                            }
+                        }
                     }
                 })
 
